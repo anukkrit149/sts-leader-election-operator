@@ -1,7 +1,3 @@
-Of course. Here is a Technical Requirements Document (TRD) generated from the provided plan.
-
-***
-
 # Technical Requirements Document: StatefulSet Leader Election Operator
 
 **Version:** 1.0
