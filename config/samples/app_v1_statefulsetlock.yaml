@@ -1,0 +1,11 @@
+apiVersion: app.anukkrit.me/v1
+kind: StatefulSetLock
+metadata:
+  labels:
+    app.kubernetes.io/name: sts-leader-elect-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: statefulsetlock-sample
+spec:
+  statefulSetName: "my-statefulset"
+  leaseName: "my-statefulset-leader-lease"
+  leaseDurationSeconds: 30

@@ -1,0 +1,27 @@
+# permissions for end users to edit statefulsetlocks.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: sts-leader-elect-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: statefulsetlock-editor-role
+rules:
+- apiGroups:
+  - app.anukkrit.me
+  resources:
+  - statefulsetlocks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - app.anukkrit.me
+  resources:
+  - statefulsetlocks/status
+  verbs:
+  - get
