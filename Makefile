@@ -171,6 +171,12 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
 
+.PHONY: build-installer-production
+build-installer-production: manifests generate kustomize ## Generate production-ready installation manifests.
+	mkdir -p dist
+	cd config/install && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/install > dist/install-production.yaml
+
 ##@ Deployment
 
 ifndef ignore-not-found

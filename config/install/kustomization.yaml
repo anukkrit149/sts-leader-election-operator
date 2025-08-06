@@ -1,0 +1,34 @@
+# Complete installation configuration
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Use the default configuration as base
+resources:
+- ../default
+
+# Apply production patches
+patches:
+- path: manager_production_patch.yaml
+  target:
+    kind: Deployment
+    name: controller-manager
+
+# Set image for installation
+images:
+- name: controller
+  newName: controller
+  newTag: latest
+
+# Add common labels for all resources
+labels:
+- includeSelectors: true
+  pairs:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: sts-leader-elect-operator
+    app.kubernetes.io/part-of: sts-leader-elect-operator
+    app.kubernetes.io/version: v0.0.1
+
+# Add common annotations for all resources
+commonAnnotations:
+  app.kubernetes.io/version: v0.0.1
