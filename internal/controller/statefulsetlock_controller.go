@@ -37,8 +37,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"go.opentelemetry.io/otel/codes"
 
 	appv1 "github.com/anukkrit/statefulset-leader-election-operator/api/v1"
+	"github.com/anukkrit/statefulset-leader-election-operator/internal/logging"
+	"github.com/anukkrit/statefulset-leader-election-operator/internal/metrics"
+	"github.com/anukkrit/statefulset-leader-election-operator/internal/tracing"
 )
 
 const (
@@ -82,18 +86,46 @@ type StatefulSetLockReconciler struct {
 
 // fetchStatefulSetLock fetches the StatefulSetLock resource
 func (r *StatefulSetLockReconciler) fetchStatefulSetLock(ctx context.Context, namespacedName types.NamespacedName) (*appv1.StatefulSetLock, error) {
+	ctx, span := tracing.StartSpan(ctx, "fetchStatefulSetLock",
+		tracing.NamespaceAttr(namespacedName.Namespace),
+		tracing.StatefulSetLockAttr(namespacedName.Name),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
+	start := time.Now()
+
 	var statefulSetLock appv1.StatefulSetLock
 	if err := r.Get(ctx, namespacedName, &statefulSetLock); err != nil {
+		duration := time.Since(start)
 		if errors.IsNotFound(err) {
+			logging.LogResourceFetch(logger, "StatefulSetLock", namespacedName.String(), false, duration)
+			tracing.SetSpanStatus(span, codes.Error, "StatefulSetLock not found")
 			return nil, fmt.Errorf("StatefulSetLock %s not found", namespacedName)
 		}
+		logging.LogResourceFetch(logger, "StatefulSetLock", namespacedName.String(), false, duration)
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to fetch StatefulSetLock")
 		return nil, fmt.Errorf("failed to fetch StatefulSetLock %s: %w", namespacedName, err)
 	}
+
+	duration := time.Since(start)
+	logging.LogResourceFetch(logger, "StatefulSetLock", namespacedName.String(), true, duration)
+	tracing.SetSpanStatus(span, codes.Ok, "StatefulSetLock fetched successfully")
 	return &statefulSetLock, nil
 }
 
 // fetchStatefulSet fetches the target StatefulSet resource
 func (r *StatefulSetLockReconciler) fetchStatefulSet(ctx context.Context, namespace, name string) (*appsv1.StatefulSet, error) {
+	ctx, span := tracing.StartSpan(ctx, "fetchStatefulSet",
+		tracing.NamespaceAttr(namespace),
+		tracing.StatefulSetAttr(name),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
+	start := time.Now()
+
 	var statefulSet appsv1.StatefulSet
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
@@ -101,11 +133,21 @@ func (r *StatefulSetLockReconciler) fetchStatefulSet(ctx context.Context, namesp
 	}
 
 	if err := r.Get(ctx, namespacedName, &statefulSet); err != nil {
+		duration := time.Since(start)
 		if errors.IsNotFound(err) {
+			logging.LogResourceFetch(logger, "StatefulSet", name, false, duration)
+			tracing.SetSpanStatus(span, codes.Error, "StatefulSet not found")
 			return nil, fmt.Errorf("StatefulSet %s not found in namespace %s", name, namespace)
 		}
+		logging.LogResourceFetch(logger, "StatefulSet", name, false, duration)
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to fetch StatefulSet")
 		return nil, fmt.Errorf("failed to fetch StatefulSet %s in namespace %s: %w", name, namespace, err)
 	}
+
+	duration := time.Since(start)
+	logging.LogResourceFetch(logger, "StatefulSet", name, true, duration)
+	tracing.SetSpanStatus(span, codes.Ok, "StatefulSet fetched successfully")
 	return &statefulSet, nil
 }
 
@@ -144,6 +186,15 @@ func (r *StatefulSetLockReconciler) fetchStatefulSetPods(ctx context.Context, st
 
 // fetchLease fetches the coordination lease resource
 func (r *StatefulSetLockReconciler) fetchLease(ctx context.Context, namespace, name string) (*coordinationv1.Lease, error) {
+	ctx, span := tracing.StartSpan(ctx, "fetchLease",
+		tracing.NamespaceAttr(namespace),
+		tracing.LeaseNameAttr(name),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
+	start := time.Now()
+
 	var lease coordinationv1.Lease
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
@@ -151,11 +202,21 @@ func (r *StatefulSetLockReconciler) fetchLease(ctx context.Context, namespace, n
 	}
 
 	if err := r.Get(ctx, namespacedName, &lease); err != nil {
+		duration := time.Since(start)
 		if errors.IsNotFound(err) {
+			logging.LogResourceFetch(logger, "Lease", name, false, duration)
+			tracing.SetSpanStatus(span, codes.Error, "Lease not found")
 			return nil, fmt.Errorf("Lease %s not found in namespace %s", name, namespace)
 		}
+		logging.LogResourceFetch(logger, "Lease", name, false, duration)
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to fetch Lease")
 		return nil, fmt.Errorf("failed to fetch Lease %s in namespace %s: %w", name, namespace, err)
 	}
+
+	duration := time.Since(start)
+	logging.LogResourceFetch(logger, "Lease", name, true, duration)
+	tracing.SetSpanStatus(span, codes.Ok, "Lease fetched successfully")
 	return &lease, nil
 }
 
@@ -230,34 +291,76 @@ func (r *StatefulSetLockReconciler) validateStatefulSet(statefulSet *appsv1.Stat
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *StatefulSetLockReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("Starting reconciliation", "statefulsetlock", req.NamespacedName)
+	ctx, span := tracing.StartSpan(ctx, "Reconcile",
+		tracing.NamespaceAttr(req.Namespace),
+		tracing.StatefulSetLockAttr(req.Name),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
+	start := time.Now()
+
+	logging.LogReconciliationStart(logger, req.Namespace, req.Name)
 
 	// Fetch the StatefulSetLock instance
 	var statefulSetLock appv1.StatefulSetLock
 	if err := r.Get(ctx, req.NamespacedName, &statefulSetLock); err != nil {
+		duration := time.Since(start)
 		if errors.IsNotFound(err) {
-			logger.Info("StatefulSetLock resource not found, likely deleted")
+			logging.Info(logger, "StatefulSetLock resource not found, likely deleted")
+			logging.LogReconciliationEnd(logger, req.Namespace, req.Name, duration, nil)
+			tracing.SetSpanStatus(span, codes.Ok, "StatefulSetLock not found (deleted)")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get StatefulSetLock")
+		logging.Error(logger, err, "Failed to get StatefulSetLock")
+		logging.LogReconciliationEnd(logger, req.Namespace, req.Name, duration, err)
+		metrics.RecordReconciliationError(req.Namespace, req.Name, "fetch_error")
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to fetch StatefulSetLock")
 		return ctrl.Result{}, err
 	}
 
+	// Add span attributes with StatefulSetLock details
+	tracing.AddSpanAttributes(span,
+		tracing.StatefulSetAttr(statefulSetLock.Spec.StatefulSetName),
+		tracing.LeaseNameAttr(statefulSetLock.Spec.LeaseName),
+		tracing.LeaseDurationAttr(statefulSetLock.Spec.LeaseDurationSeconds),
+	)
+
 	// Handle deletion
 	if statefulSetLock.DeletionTimestamp != nil {
-		logger.Info("StatefulSetLock is being deleted, handling cleanup")
-		return r.handleDeletion(ctx, &statefulSetLock)
+		logging.Info(logger, "StatefulSetLock is being deleted, handling cleanup")
+		result, err := r.handleDeletion(ctx, &statefulSetLock)
+		duration := time.Since(start)
+		logging.LogReconciliationEnd(logger, req.Namespace, req.Name, duration, err)
+		if err != nil {
+			metrics.RecordReconciliationError(req.Namespace, req.Name, "deletion_error")
+			tracing.RecordError(span, err)
+			tracing.SetSpanStatus(span, codes.Error, "Deletion failed")
+		} else {
+			metrics.RecordReconciliationDuration(req.Namespace, req.Name, duration.Seconds())
+			tracing.SetSpanStatus(span, codes.Ok, "Deletion completed")
+		}
+		return result, err
 	}
 
 	// Add finalizer if not present
 	if !controllerutil.ContainsFinalizer(&statefulSetLock, StatefulSetLockFinalizer) {
-		logger.Info("Adding finalizer to StatefulSetLock")
+		logging.Info(logger, "Adding finalizer to StatefulSetLock")
 		controllerutil.AddFinalizer(&statefulSetLock, StatefulSetLockFinalizer)
 		if err := r.Update(ctx, &statefulSetLock); err != nil {
-			logger.Error(err, "Failed to add finalizer")
+			duration := time.Since(start)
+			logging.Error(logger, err, "Failed to add finalizer")
+			logging.LogReconciliationEnd(logger, req.Namespace, req.Name, duration, err)
+			metrics.RecordReconciliationError(req.Namespace, req.Name, "finalizer_error")
+			tracing.RecordError(span, err)
+			tracing.SetSpanStatus(span, codes.Error, "Failed to add finalizer")
 			return ctrl.Result{}, err
 		}
+		duration := time.Since(start)
+		logging.LogReconciliationEnd(logger, req.Namespace, req.Name, duration, nil)
+		metrics.RecordReconciliationDuration(req.Namespace, req.Name, duration.Seconds())
+		tracing.SetSpanStatus(span, codes.Ok, "Finalizer added")
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -267,6 +370,8 @@ func (r *StatefulSetLockReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// Perform leader election reconciliation
 	result, err := r.performLeaderElection(ctx, &statefulSetLock)
 	if err != nil {
+		metrics.RecordReconciliationError(req.Namespace, req.Name, "leader_election_error")
+		tracing.RecordError(span, err)
 		return r.handleReconcileError(ctx, &statefulSetLock, err, "Failed to perform leader election")
 	}
 
@@ -278,11 +383,24 @@ func (r *StatefulSetLockReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// Update status
 	statefulSetLock.Status.ObservedGeneration = statefulSetLock.Generation
 	if err := r.Status().Update(ctx, &statefulSetLock); err != nil {
-		logger.Error(err, "Failed to update StatefulSetLock status")
+		duration := time.Since(start)
+		logging.Error(logger, err, "Failed to update StatefulSetLock status")
+		logging.LogReconciliationEnd(logger, req.Namespace, req.Name, duration, err)
+		metrics.RecordReconciliationError(req.Namespace, req.Name, "status_update_error")
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to update status")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Reconciliation completed successfully", "writerPod", statefulSetLock.Status.WriterPod)
+	// Update metrics with current leader info
+	metrics.UpdateCurrentLeaderInfo(req.Namespace, req.Name, statefulSetLock.Spec.StatefulSetName, statefulSetLock.Status.WriterPod)
+
+	duration := time.Since(start)
+	logging.Info(logging.WithLeader(logger, statefulSetLock.Status.WriterPod), "Reconciliation completed successfully")
+	logging.LogReconciliationEnd(logger, req.Namespace, req.Name, duration, nil)
+	metrics.RecordReconciliationDuration(req.Namespace, req.Name, duration.Seconds())
+	tracing.AddSpanAttributes(span, tracing.LeaderPodAttr(statefulSetLock.Status.WriterPod))
+	tracing.SetSpanStatus(span, codes.Ok, "Reconciliation completed successfully")
 
 	// Return the result from leader election (includes requeue timing)
 	return result, nil
@@ -290,43 +408,81 @@ func (r *StatefulSetLockReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 // handleDeletion handles the cleanup logic when a StatefulSetLock is being deleted
 func (r *StatefulSetLockReconciler) handleDeletion(ctx context.Context, statefulSetLock *appv1.StatefulSetLock) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
+	ctx, span := tracing.StartSpan(ctx, "handleDeletion",
+		tracing.NamespaceAttr(statefulSetLock.Namespace),
+		tracing.StatefulSetLockAttr(statefulSetLock.Name),
+		tracing.StatefulSetAttr(statefulSetLock.Spec.StatefulSetName),
+		tracing.LeaseNameAttr(statefulSetLock.Spec.LeaseName),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
+	start := time.Now()
 
 	if !controllerutil.ContainsFinalizer(statefulSetLock, StatefulSetLockFinalizer) {
-		logger.Info("Finalizer not present, skipping cleanup")
+		logging.Info(logger, "Finalizer not present, skipping cleanup")
+		tracing.SetSpanStatus(span, codes.Ok, "No finalizer present")
 		return ctrl.Result{}, nil
 	}
 
-	logger.Info("Performing cleanup for StatefulSetLock")
+	logging.Info(
+		logging.WithStatefulSetLock(logger, statefulSetLock.Namespace, statefulSetLock.Name),
+		"Performing cleanup for StatefulSetLock",
+	)
 
 	// Remove pod role labels before deleting the lease
 	if statefulSet, err := r.fetchStatefulSet(ctx, statefulSetLock.Namespace, statefulSetLock.Spec.StatefulSetName); err == nil {
 		if allPods, err := r.fetchStatefulSetPods(ctx, statefulSet); err == nil {
 			if err := r.removePodRoleLabels(ctx, allPods); err != nil {
-				logger.Error(err, "Failed to remove pod role labels during cleanup")
+				logging.Error(logger, err, "Failed to remove pod role labels during cleanup")
+				metrics.RecordPodLabelingError(statefulSetLock.Namespace, statefulSetLock.Name, "cleanup")
 				// Continue with cleanup even if labeling fails
 			}
 		} else {
-			logger.Error(err, "Failed to fetch pods during cleanup, skipping label removal")
+			logging.Error(logger, err, "Failed to fetch pods during cleanup, skipping label removal")
 		}
 	} else {
-		logger.Error(err, "Failed to fetch StatefulSet during cleanup, skipping label removal")
+		logging.Error(logger, err, "Failed to fetch StatefulSet during cleanup, skipping label removal")
 	}
 
 	// Delete the associated lease
 	if err := r.deleteLease(ctx, statefulSetLock.Namespace, statefulSetLock.Spec.LeaseName); err != nil {
-		logger.Error(err, "Failed to delete lease during cleanup")
+		duration := time.Since(start)
+		logging.Error(
+			logging.WithDuration(logger, duration),
+			err,
+			"Failed to delete lease during cleanup",
+		)
+		metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "lease_deletion_error")
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to delete lease")
 		return ctrl.Result{RequeueAfter: time.Minute * 1}, err
 	}
+
+	// Clear metrics for this StatefulSetLock
+	metrics.UpdateCurrentLeaderInfo(statefulSetLock.Namespace, statefulSetLock.Name, statefulSetLock.Spec.StatefulSetName, "")
 
 	// Remove finalizer after successful cleanup
 	controllerutil.RemoveFinalizer(statefulSetLock, StatefulSetLockFinalizer)
 	if err := r.Update(ctx, statefulSetLock); err != nil {
-		logger.Error(err, "Failed to remove finalizer")
+		duration := time.Since(start)
+		logging.Error(
+			logging.WithDuration(logger, duration),
+			err,
+			"Failed to remove finalizer",
+		)
+		metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "finalizer_removal_error")
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to remove finalizer")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Cleanup completed, finalizer removed")
+	duration := time.Since(start)
+	logging.Info(
+		logging.WithDuration(logger, duration),
+		"Cleanup completed, finalizer removed",
+	)
+	tracing.SetSpanStatus(span, codes.Ok, "Cleanup completed successfully")
 	return ctrl.Result{}, nil
 }
 
@@ -371,8 +527,16 @@ func (r *StatefulSetLockReconciler) setCondition(statefulSetLock *appv1.Stateful
 
 // handleReconcileError handles errors during reconciliation and updates conditions
 func (r *StatefulSetLockReconciler) handleReconcileError(ctx context.Context, statefulSetLock *appv1.StatefulSetLock, err error, message string) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Error(err, message)
+	logger := logging.LoggerFromContext(ctx)
+	
+	logging.Error(
+		logging.WithStatefulSetLock(logger, statefulSetLock.Namespace, statefulSetLock.Name),
+		err,
+		message,
+	)
+
+	// Record error metrics
+	metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "reconcile_error")
 
 	// Set error conditions
 	r.setCondition(statefulSetLock, ConditionTypeAvailable, metav1.ConditionFalse, ReasonReconcileError, fmt.Sprintf("%s: %v", message, err))
@@ -381,7 +545,12 @@ func (r *StatefulSetLockReconciler) handleReconcileError(ctx context.Context, st
 	// Update status with error conditions
 	statefulSetLock.Status.ObservedGeneration = statefulSetLock.Generation
 	if statusErr := r.Status().Update(ctx, statefulSetLock); statusErr != nil {
-		logger.Error(statusErr, "Failed to update status with error condition")
+		logging.Error(
+			logging.WithStatefulSetLock(logger, statefulSetLock.Namespace, statefulSetLock.Name),
+			statusErr,
+			"Failed to update status with error condition",
+		)
+		metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "status_update_error")
 		return ctrl.Result{}, statusErr
 	}
 
@@ -509,19 +678,32 @@ func ShouldElectNewLeader(lease *coordinationv1.Lease, readyPods []corev1.Pod, d
 
 // createOrUpdateLease creates a new lease or updates an existing one with the given leader
 func (r *StatefulSetLockReconciler) createOrUpdateLease(ctx context.Context, namespace, leaseName, leaderPodName string, durationSeconds int32) error {
-	logger := log.FromContext(ctx)
+	ctx, span := tracing.StartSpan(ctx, "createOrUpdateLease",
+		tracing.NamespaceAttr(namespace),
+		tracing.LeaseNameAttr(leaseName),
+		tracing.LeaderPodAttr(leaderPodName),
+		tracing.LeaseDurationAttr(durationSeconds),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
+	start := time.Now()
 
 	// Try to fetch existing lease
 	existingLease, err := r.fetchLease(ctx, namespace, leaseName)
 	if err != nil && !strings.Contains(err.Error(), "not found") {
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to fetch existing lease")
 		return fmt.Errorf("failed to fetch lease %s: %w", leaseName, err)
 	}
 
 	now := metav1.NewMicroTime(time.Now())
+	operation := "lease_renewal"
 
 	if existingLease == nil {
 		// Create new lease
-		logger.Info("Creating new lease", "leaseName", leaseName, "leader", leaderPodName)
+		operation = "lease_creation"
+		logging.Info(logging.WithLease(logging.WithLeader(logger, leaderPodName), leaseName), "Creating new lease")
 
 		lease := &coordinationv1.Lease{
 			ObjectMeta: metav1.ObjectMeta{
@@ -536,24 +718,46 @@ func (r *StatefulSetLockReconciler) createOrUpdateLease(ctx context.Context, nam
 		}
 
 		if err := r.Create(ctx, lease); err != nil {
+			tracing.RecordError(span, err)
+			tracing.SetSpanStatus(span, codes.Error, "Failed to create lease")
 			return fmt.Errorf("failed to create lease %s: %w", leaseName, err)
 		}
 
-		logger.Info("Successfully created lease", "leaseName", leaseName, "leader", leaderPodName)
+		duration := time.Since(start)
+		logging.LogLeaseOperation(logger, "Lease created successfully", leaseName, leaderPodName, duration)
+		tracing.SetSpanStatus(span, codes.Ok, "Lease created successfully")
 	} else {
 		// Update existing lease
-		logger.Info("Updating existing lease", "leaseName", leaseName, "oldLeader",
-			getStringValue(existingLease.Spec.HolderIdentity), "newLeader", leaderPodName)
+		oldLeader := getStringValue(existingLease.Spec.HolderIdentity)
+		logging.Info(
+			logging.WithLease(logging.WithLeader(logger, leaderPodName), leaseName),
+			"Updating existing lease",
+			"old_leader", oldLeader,
+		)
 
 		existingLease.Spec.HolderIdentity = &leaderPodName
 		existingLease.Spec.LeaseDurationSeconds = &durationSeconds
 		existingLease.Spec.RenewTime = &now
 
 		if err := r.Update(ctx, existingLease); err != nil {
+			tracing.RecordError(span, err)
+			tracing.SetSpanStatus(span, codes.Error, "Failed to update lease")
 			return fmt.Errorf("failed to update lease %s: %w", leaseName, err)
 		}
 
-		logger.Info("Successfully updated lease", "leaseName", leaseName, "leader", leaderPodName)
+		duration := time.Since(start)
+		logging.LogLeaseOperation(logger, "Lease updated successfully", leaseName, leaderPodName, duration)
+		tracing.SetSpanStatus(span, codes.Ok, "Lease updated successfully")
+	}
+
+	// Record metrics
+	duration := time.Since(start)
+	if operation == "lease_creation" {
+		// For new leases, we consider this a leader election
+		metrics.RecordLeaderElection(namespace, "", "", "new_lease", duration.Seconds())
+	} else {
+		// For existing leases, this is a renewal
+		metrics.RecordLeaseRenewal(namespace, "", leaseName, duration.Seconds())
 	}
 
 	return nil
@@ -561,59 +765,103 @@ func (r *StatefulSetLockReconciler) createOrUpdateLease(ctx context.Context, nam
 
 // deleteLease deletes the specified lease resource
 func (r *StatefulSetLockReconciler) deleteLease(ctx context.Context, namespace, leaseName string) error {
-	logger := log.FromContext(ctx)
+	ctx, span := tracing.StartSpan(ctx, "deleteLease",
+		tracing.NamespaceAttr(namespace),
+		tracing.LeaseNameAttr(leaseName),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
+	start := time.Now()
 
 	// Try to fetch the lease first
 	lease, err := r.fetchLease(ctx, namespace, leaseName)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			logger.Info("Lease already deleted or does not exist", "leaseName", leaseName)
+			duration := time.Since(start)
+			logging.Info(
+				logging.WithDuration(logging.WithLease(logger, leaseName), duration),
+				"Lease already deleted or does not exist",
+			)
+			tracing.SetSpanStatus(span, codes.Ok, "Lease already deleted")
 			return nil
 		}
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to fetch lease for deletion")
 		return fmt.Errorf("failed to fetch lease %s for deletion: %w", leaseName, err)
 	}
 
 	// Delete the lease
-	logger.Info("Deleting lease", "leaseName", leaseName)
+	logging.Info(logging.WithLease(logger, leaseName), "Deleting lease")
 	if err := r.Delete(ctx, lease); err != nil {
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to delete lease")
 		return fmt.Errorf("failed to delete lease %s: %w", leaseName, err)
 	}
 
-	logger.Info("Successfully deleted lease", "leaseName", leaseName)
+	duration := time.Since(start)
+	logging.Info(
+		logging.WithDuration(logging.WithLease(logger, leaseName), duration),
+		"Successfully deleted lease",
+	)
+	tracing.SetSpanStatus(span, codes.Ok, "Lease deleted successfully")
 	return nil
 }
 
 // performLeaderElection performs the core leader election algorithm
 func (r *StatefulSetLockReconciler) performLeaderElection(ctx context.Context, statefulSetLock *appv1.StatefulSetLock) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("Starting leader election process")
+	ctx, span := tracing.StartSpan(ctx, "performLeaderElection",
+		tracing.NamespaceAttr(statefulSetLock.Namespace),
+		tracing.StatefulSetLockAttr(statefulSetLock.Name),
+		tracing.StatefulSetAttr(statefulSetLock.Spec.StatefulSetName),
+		tracing.LeaseNameAttr(statefulSetLock.Spec.LeaseName),
+		tracing.LeaseDurationAttr(statefulSetLock.Spec.LeaseDurationSeconds),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
+	start := time.Now()
+
+	logging.Info(logger, "Starting leader election process")
 
 	// Step 1: Validate StatefulSetLock spec
 	if err := r.validateStatefulSetLockSpec(&statefulSetLock.Spec); err != nil {
-		logger.Error(err, "StatefulSetLock spec validation failed")
+		logging.Error(logger, err, "StatefulSetLock spec validation failed")
 		r.setCondition(statefulSetLock, ConditionTypeAvailable, metav1.ConditionFalse, ReasonValidationError, fmt.Sprintf("Spec validation failed: %v", err))
+		metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "validation_error")
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Spec validation failed")
 		return ctrl.Result{RequeueAfter: time.Minute * 1}, err
 	}
 
 	// Step 2: Fetch and validate StatefulSet
 	statefulSet, err := r.fetchStatefulSet(ctx, statefulSetLock.Namespace, statefulSetLock.Spec.StatefulSetName)
 	if err != nil {
-		logger.Error(err, "Failed to fetch StatefulSet", "statefulSetName", statefulSetLock.Spec.StatefulSetName)
+		logging.Error(logging.WithStatefulSet(logger, statefulSetLock.Spec.StatefulSetName), err, "Failed to fetch StatefulSet")
 		r.setCondition(statefulSetLock, ConditionTypeAvailable, metav1.ConditionFalse, ReasonStatefulSetNotFound, fmt.Sprintf("StatefulSet not found: %v", err))
+		metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "statefulset_not_found")
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "StatefulSet not found")
 		return ctrl.Result{RequeueAfter: time.Minute * 1}, err
 	}
 
 	if err := r.validateStatefulSet(statefulSet); err != nil {
-		logger.Error(err, "StatefulSet validation failed", "statefulSetName", statefulSet.Name)
+		logging.Error(logging.WithStatefulSet(logger, statefulSet.Name), err, "StatefulSet validation failed")
 		r.setCondition(statefulSetLock, ConditionTypeAvailable, metav1.ConditionFalse, ReasonValidationError, fmt.Sprintf("StatefulSet validation failed: %v", err))
+		metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "statefulset_validation_error")
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "StatefulSet validation failed")
 		return ctrl.Result{RequeueAfter: time.Minute * 1}, err
 	}
 
 	// Step 3: Fetch StatefulSet pods
 	allPods, err := r.fetchStatefulSetPods(ctx, statefulSet)
 	if err != nil {
-		logger.Error(err, "Failed to fetch StatefulSet pods", "statefulSetName", statefulSet.Name)
+		logging.Error(logging.WithStatefulSet(logger, statefulSet.Name), err, "Failed to fetch StatefulSet pods")
 		r.setCondition(statefulSetLock, ConditionTypeAvailable, metav1.ConditionFalse, ReasonPodsNotFound, fmt.Sprintf("Failed to fetch pods: %v", err))
+		metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "pods_fetch_error")
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to fetch pods")
 		return ctrl.Result{RequeueAfter: time.Minute * 1}, err
 	}
 
@@ -621,64 +869,115 @@ func (r *StatefulSetLockReconciler) performLeaderElection(ctx context.Context, s
 	readyPods := GetReadyPods(allPods)
 	sortedReadyPods := SortPodsByOrdinal(readyPods)
 
-	logger.Info("Pod status summary",
-		"totalPods", len(allPods),
-		"readyPods", len(readyPods),
-		"readyPodNames", getPodNames(sortedReadyPods))
+	// Update metrics with pod counts
+	metrics.UpdateReadyPodsCount(statefulSetLock.Namespace, statefulSetLock.Name, statefulSetLock.Spec.StatefulSetName, len(readyPods))
+
+	// Add tracing attributes for pod counts
+	tracing.AddSpanAttributes(span,
+		tracing.TotalPodsAttr(len(allPods)),
+		tracing.ReadyPodsAttr(len(readyPods)),
+	)
+
+	logging.Info(
+		logging.WithPodCounts(logger, len(allPods), len(readyPods)),
+		"Pod status summary",
+		"ready_pod_names", getPodNames(sortedReadyPods),
+	)
 
 	// Step 5: Fetch existing lease (if any)
 	existingLease, err := r.fetchLease(ctx, statefulSetLock.Namespace, statefulSetLock.Spec.LeaseName)
 	if err != nil && !strings.Contains(err.Error(), "not found") {
-		logger.Error(err, "Failed to fetch lease", "leaseName", statefulSetLock.Spec.LeaseName)
+		logging.Error(logging.WithLease(logger, statefulSetLock.Spec.LeaseName), err, "Failed to fetch lease")
 		r.setCondition(statefulSetLock, ConditionTypeAvailable, metav1.ConditionFalse, ReasonLeaseNotFound, fmt.Sprintf("Failed to fetch lease: %v", err))
+		metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "lease_fetch_error")
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to fetch lease")
 		return ctrl.Result{RequeueAfter: time.Minute * 1}, err
 	}
 
 	// Step 6: Determine if new leader election is needed
 	needsNewElection := ShouldElectNewLeader(existingLease, sortedReadyPods, statefulSetLock.Spec.LeaseDurationSeconds)
+	leaseExpired := IsLeaseExpired(existingLease, statefulSetLock.Spec.LeaseDurationSeconds)
+
+	// Update lease expiration metrics
+	if existingLease != nil {
+		var secondsUntilExpiration float64
+		if existingLease.Spec.RenewTime != nil {
+			renewTime := existingLease.Spec.RenewTime.Time
+			leaseDuration := time.Duration(statefulSetLock.Spec.LeaseDurationSeconds) * time.Second
+			expirationTime := renewTime.Add(leaseDuration)
+			secondsUntilExpiration = time.Until(expirationTime).Seconds()
+		}
+		metrics.UpdateLeaseExpiration(statefulSetLock.Namespace, statefulSetLock.Name, statefulSetLock.Spec.LeaseName, secondsUntilExpiration)
+	}
+
+	// Add tracing attributes for lease status
+	tracing.AddSpanAttributes(span,
+		tracing.LeaseExpiredAttr(leaseExpired),
+	)
 
 	if existingLease != nil {
-		logger.Info("Current lease status",
-			"leaseName", statefulSetLock.Spec.LeaseName,
-			"currentHolder", getStringValue(existingLease.Spec.HolderIdentity),
-			"isExpired", IsLeaseExpired(existingLease, statefulSetLock.Spec.LeaseDurationSeconds),
-			"needsNewElection", needsNewElection)
+		currentHolder := getStringValue(existingLease.Spec.HolderIdentity)
+		logging.Info(
+			logging.WithLeaseInfo(logging.WithLease(logger, statefulSetLock.Spec.LeaseName), currentHolder, leaseExpired, statefulSetLock.Spec.LeaseDurationSeconds),
+			"Current lease status",
+			"needs_new_election", needsNewElection,
+		)
+		tracing.AddSpanAttributes(span, tracing.LeaderPodAttr(currentHolder))
 	} else {
-		logger.Info("No existing lease found", "needsNewElection", needsNewElection)
+		logging.Info(logger, "No existing lease found", "needs_new_election", needsNewElection)
 	}
 
 	// Step 7: Handle case where no ready pods are available
 	if len(sortedReadyPods) == 0 {
-		logger.Info("No ready pods available for leader election")
+		logging.Info(logger, "No ready pods available for leader election")
 		r.setCondition(statefulSetLock, ConditionTypeAvailable, metav1.ConditionFalse, ReasonPodsNotFound, "No ready pods available for leader election")
 		statefulSetLock.Status.WriterPod = ""
+		// Clear current leader metrics
+		metrics.UpdateCurrentLeaderInfo(statefulSetLock.Namespace, statefulSetLock.Name, statefulSetLock.Spec.StatefulSetName, "")
+		tracing.SetSpanStatus(span, codes.Ok, "No ready pods available")
 		// Requeue more frequently when waiting for pods to become ready
 		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 	}
 
 	// Step 8: Handle scenarios based on election needs
 	if needsNewElection {
+		electionStart := time.Now()
 
 		// Elect new leader (lowest ordinal ready pod)
 		newLeader := sortedReadyPods[0]
-		logger.Info("Electing new leader",
-			"newLeader", newLeader.Name,
-			"reason", r.getElectionReason(existingLease, sortedReadyPods, statefulSetLock.Spec.LeaseDurationSeconds))
+		electionReason := r.getElectionReason(existingLease, sortedReadyPods, statefulSetLock.Spec.LeaseDurationSeconds)
+
+		logging.LogLeaderElection(logger, statefulSetLock.Namespace, statefulSetLock.Name, newLeader.Name, electionReason)
+
+		// Add tracing attributes for the new leader
+		tracing.AddSpanAttributes(span,
+			tracing.LeaderPodAttr(newLeader.Name),
+			tracing.ElectionReasonAttr(electionReason),
+		)
 
 		// Step 9: Create or update lease with new leader
 		if err := r.createOrUpdateLease(ctx, statefulSetLock.Namespace, statefulSetLock.Spec.LeaseName, newLeader.Name, statefulSetLock.Spec.LeaseDurationSeconds); err != nil {
-			logger.Error(err, "Failed to create or update lease", "newLeader", newLeader.Name)
+			logging.Error(logging.WithLeader(logger, newLeader.Name), err, "Failed to create or update lease")
 			r.setCondition(statefulSetLock, ConditionTypeAvailable, metav1.ConditionFalse, ReasonReconcileError, fmt.Sprintf("Failed to update lease: %v", err))
+			metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "lease_update_error")
+			tracing.RecordError(span, err)
+			tracing.SetSpanStatus(span, codes.Error, "Failed to update lease")
 			return ctrl.Result{RequeueAfter: time.Minute * 1}, err
 		}
 
+		// Record leader election metrics
+		electionDuration := time.Since(electionStart)
+		metrics.RecordLeaderElection(statefulSetLock.Namespace, statefulSetLock.Name, statefulSetLock.Spec.StatefulSetName, electionReason, electionDuration.Seconds())
+
 		// Update status with new leader
 		statefulSetLock.Status.WriterPod = newLeader.Name
-		logger.Info("Successfully elected new leader", "leader", newLeader.Name)
+		logging.Info(logging.WithLeader(logger, newLeader.Name), "Successfully elected new leader")
 
 		// Step 10: Update pod labels with new leadership
 		if err := r.updatePodLabels(ctx, allPods, newLeader.Name); err != nil {
-			logger.Error(err, "Failed to update pod labels after leader election", "leader", newLeader.Name)
+			logging.Error(logging.WithLeader(logger, newLeader.Name), err, "Failed to update pod labels after leader election")
+			metrics.RecordPodLabelingError(statefulSetLock.Namespace, statefulSetLock.Name, newLeader.Name)
 			// Don't fail the reconciliation for labeling errors, but log them
 			// The lease and status have been updated successfully
 		}
@@ -688,19 +987,23 @@ func (r *StatefulSetLockReconciler) performLeaderElection(ctx context.Context, s
 		if existingLease != nil && existingLease.Spec.HolderIdentity != nil {
 			currentLeader := *existingLease.Spec.HolderIdentity
 			statefulSetLock.Status.WriterPod = currentLeader
-			logger.Info("Current leader confirmed", "leader", currentLeader)
+			logging.Info(logging.WithLeader(logger, currentLeader), "Current leader confirmed")
 
 			// Renew lease to maintain leadership
 			if err := r.createOrUpdateLease(ctx, statefulSetLock.Namespace, statefulSetLock.Spec.LeaseName, currentLeader, statefulSetLock.Spec.LeaseDurationSeconds); err != nil {
-				logger.Error(err, "Failed to renew lease", "currentLeader", currentLeader)
+				logging.Error(logging.WithLeader(logger, currentLeader), err, "Failed to renew lease")
 				r.setCondition(statefulSetLock, ConditionTypeAvailable, metav1.ConditionFalse, ReasonReconcileError, fmt.Sprintf("Failed to renew lease: %v", err))
+				metrics.RecordReconciliationError(statefulSetLock.Namespace, statefulSetLock.Name, "lease_renewal_error")
+				tracing.RecordError(span, err)
+				tracing.SetSpanStatus(span, codes.Error, "Failed to renew lease")
 				return ctrl.Result{RequeueAfter: time.Minute * 1}, err
 			}
-			logger.Info("Successfully renewed lease", "leader", currentLeader)
+			logging.Info(logging.WithLeader(logger, currentLeader), "Successfully renewed lease")
 
 			// Update pod labels to ensure they are correct (in case of pod restarts or label drift)
 			if err := r.updatePodLabels(ctx, allPods, currentLeader); err != nil {
-				logger.Error(err, "Failed to update pod labels during lease renewal", "leader", currentLeader)
+				logging.Error(logging.WithLeader(logger, currentLeader), err, "Failed to update pod labels during lease renewal")
+				metrics.RecordPodLabelingError(statefulSetLock.Namespace, statefulSetLock.Name, currentLeader)
 				// Don't fail the reconciliation for labeling errors, but log them
 			}
 		}
@@ -708,10 +1011,15 @@ func (r *StatefulSetLockReconciler) performLeaderElection(ctx context.Context, s
 
 	// Step 11: Schedule next reconciliation at half the lease duration
 	requeueAfter := time.Duration(statefulSetLock.Spec.LeaseDurationSeconds/2) * time.Second
-	logger.Info("Leader election completed successfully",
-		"currentLeader", statefulSetLock.Status.WriterPod,
-		"nextReconciliation", requeueAfter)
+	duration := time.Since(start)
 
+	logging.Info(
+		logging.WithDuration(logging.WithLeader(logger, statefulSetLock.Status.WriterPod), duration),
+		"Leader election completed successfully",
+		"next_reconciliation", requeueAfter,
+	)
+
+	tracing.SetSpanStatus(span, codes.Ok, "Leader election completed successfully")
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
@@ -771,11 +1079,18 @@ func (r *StatefulSetLockReconciler) labelPodAsReader(ctx context.Context, pod *c
 
 // labelPodWithRole labels a pod with the specified role
 func (r *StatefulSetLockReconciler) labelPodWithRole(ctx context.Context, pod *corev1.Pod, role string) error {
-	logger := log.FromContext(ctx)
+	ctx, span := tracing.StartSpan(ctx, "labelPodWithRole",
+		tracing.NamespaceAttr(pod.Namespace),
+		tracing.PodNameAttr(pod.Name),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
 
 	// Check if the pod already has the correct label
 	if currentRole, exists := pod.Labels[PodRoleLabel]; exists && currentRole == role {
-		logger.V(1).Info("Pod already has correct role label", "pod", pod.Name, "role", role)
+		logging.Verbose(logging.WithPod(logger, pod.Name), "Pod already has correct role label", "role", role)
+		tracing.SetSpanStatus(span, codes.Ok, "Pod already has correct label")
 		return nil
 	}
 
@@ -791,31 +1106,48 @@ func (r *StatefulSetLockReconciler) labelPodWithRole(ctx context.Context, pod *c
 	podCopy.Labels[PodRoleLabel] = role
 
 	// Update the pod
-	logger.Info("Updating pod role label", "pod", pod.Name, "role", role)
+	logging.LogPodOperation(logger, "Updating pod role label", pod.Name, role)
 	if err := r.Patch(ctx, podCopy, client.MergeFrom(pod)); err != nil {
+		tracing.RecordError(span, err)
+		tracing.SetSpanStatus(span, codes.Error, "Failed to label pod")
 		return fmt.Errorf("failed to label pod %s with role %s: %w", pod.Name, role, err)
 	}
 
-	logger.Info("Successfully labeled pod", "pod", pod.Name, "role", role)
+	logging.LogPodOperation(logger, "Successfully labeled pod", pod.Name, role)
+	tracing.SetSpanStatus(span, codes.Ok, "Pod labeled successfully")
 	return nil
 }
 
 // updatePodLabels updates all pod labels based on the current leader
 func (r *StatefulSetLockReconciler) updatePodLabels(ctx context.Context, allPods []corev1.Pod, leaderPodName string) error {
-	logger := log.FromContext(ctx)
-	logger.Info("Updating pod labels", "leaderPod", leaderPodName, "totalPods", len(allPods))
+	ctx, span := tracing.StartSpan(ctx, "updatePodLabels",
+		tracing.LeaderPodAttr(leaderPodName),
+		tracing.TotalPodsAttr(len(allPods)),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
+	start := time.Now()
+
+	logging.Info(
+		logging.WithLeader(logger, leaderPodName),
+		"Updating pod labels",
+		"total_pods", len(allPods),
+	)
 
 	var labelingErrors []error
+	readyPodsLabeled := 0
 
 	for i := range allPods {
 		pod := &allPods[i]
 
 		// Skip pods that are not ready - we don't want to label unhealthy pods
 		if !IsPodReady(*pod) {
-			logger.V(1).Info("Skipping labeling for non-ready pod", "pod", pod.Name)
+			logging.Verbose(logging.WithPod(logger, pod.Name), "Skipping labeling for non-ready pod")
 			continue
 		}
 
+		readyPodsLabeled++
 		var err error
 		if pod.Name == leaderPodName {
 			// Label as writer
@@ -826,10 +1158,12 @@ func (r *StatefulSetLockReconciler) updatePodLabels(ctx context.Context, allPods
 		}
 
 		if err != nil {
-			logger.Error(err, "Failed to update pod label", "pod", pod.Name)
+			logging.Error(logging.WithPod(logger, pod.Name), err, "Failed to update pod label")
 			labelingErrors = append(labelingErrors, err)
 		}
 	}
+
+	duration := time.Since(start)
 
 	// Return combined errors if any occurred
 	if len(labelingErrors) > 0 {
@@ -837,28 +1171,52 @@ func (r *StatefulSetLockReconciler) updatePodLabels(ctx context.Context, allPods
 		for _, err := range labelingErrors {
 			errorMessages = append(errorMessages, err.Error())
 		}
+		logging.Error(
+			logging.WithDuration(logging.WithLeader(logger, leaderPodName), duration),
+			nil,
+			"Failed to update some pod labels",
+			"error_count", len(labelingErrors),
+			"ready_pods_processed", readyPodsLabeled,
+		)
+		tracing.SetSpanStatus(span, codes.Error, fmt.Sprintf("Failed to label %d pods", len(labelingErrors)))
 		return fmt.Errorf("failed to update some pod labels: %v", errorMessages)
 	}
 
-	logger.Info("Successfully updated all pod labels", "leaderPod", leaderPodName)
+	logging.Info(
+		logging.WithDuration(logging.WithLeader(logger, leaderPodName), duration),
+		"Successfully updated all pod labels",
+		"ready_pods_labeled", readyPodsLabeled,
+	)
+	tracing.AddSpanAttributes(span, tracing.ReadyPodsAttr(readyPodsLabeled))
+	tracing.SetSpanStatus(span, codes.Ok, "All pod labels updated successfully")
 	return nil
 }
 
 // removePodRoleLabels removes role labels from all pods (used during cleanup)
 func (r *StatefulSetLockReconciler) removePodRoleLabels(ctx context.Context, allPods []corev1.Pod) error {
-	logger := log.FromContext(ctx)
-	logger.Info("Removing role labels from all pods", "totalPods", len(allPods))
+	ctx, span := tracing.StartSpan(ctx, "removePodRoleLabels",
+		tracing.TotalPodsAttr(len(allPods)),
+	)
+	defer span.End()
+
+	logger := logging.LoggerFromContext(ctx)
+	start := time.Now()
+
+	logging.Info(logger, "Removing role labels from all pods", "total_pods", len(allPods))
 
 	var labelingErrors []error
+	podsProcessed := 0
 
 	for i := range allPods {
 		pod := &allPods[i]
 
 		// Check if the pod has the role label
 		if _, exists := pod.Labels[PodRoleLabel]; !exists {
-			logger.V(1).Info("Pod does not have role label, skipping", "pod", pod.Name)
+			logging.Verbose(logging.WithPod(logger, pod.Name), "Pod does not have role label, skipping")
 			continue
 		}
+
+		podsProcessed++
 
 		// Create a copy of the pod to modify
 		podCopy := pod.DeepCopy()
@@ -867,14 +1225,16 @@ func (r *StatefulSetLockReconciler) removePodRoleLabels(ctx context.Context, all
 		delete(podCopy.Labels, PodRoleLabel)
 
 		// Update the pod
-		logger.Info("Removing role label from pod", "pod", pod.Name)
+		logging.LogPodOperation(logger, "Removing role label from pod", pod.Name, "")
 		if err := r.Patch(ctx, podCopy, client.MergeFrom(pod)); err != nil {
-			logger.Error(err, "Failed to remove role label from pod", "pod", pod.Name)
+			logging.Error(logging.WithPod(logger, pod.Name), err, "Failed to remove role label from pod")
 			labelingErrors = append(labelingErrors, err)
 		} else {
-			logger.Info("Successfully removed role label from pod", "pod", pod.Name)
+			logging.LogPodOperation(logger, "Successfully removed role label from pod", pod.Name, "")
 		}
 	}
+
+	duration := time.Since(start)
 
 	// Return combined errors if any occurred
 	if len(labelingErrors) > 0 {
@@ -882,10 +1242,24 @@ func (r *StatefulSetLockReconciler) removePodRoleLabels(ctx context.Context, all
 		for _, err := range labelingErrors {
 			errorMessages = append(errorMessages, err.Error())
 		}
+		logging.Error(
+			logging.WithDuration(logger, duration),
+			nil,
+			"Failed to remove role labels from some pods",
+			"error_count", len(labelingErrors),
+			"pods_processed", podsProcessed,
+		)
+		tracing.SetSpanStatus(span, codes.Error, fmt.Sprintf("Failed to remove labels from %d pods", len(labelingErrors)))
 		return fmt.Errorf("failed to remove role labels from some pods: %v", errorMessages)
 	}
 
-	logger.Info("Successfully removed role labels from all pods")
+	logging.Info(
+		logging.WithDuration(logger, duration),
+		"Successfully removed role labels from all pods",
+		"pods_processed", podsProcessed,
+	)
+	tracing.AddSpanAttributes(span, tracing.TotalPodsAttr(podsProcessed))
+	tracing.SetSpanStatus(span, codes.Ok, "All role labels removed successfully")
 	return nil
 }
 

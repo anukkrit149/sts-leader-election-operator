@@ -37,6 +37,7 @@ import (
 
 	appv1 "github.com/anukkrit/statefulset-leader-election-operator/api/v1"
 	"github.com/anukkrit/statefulset-leader-election-operator/internal/controller"
+	_ "github.com/anukkrit/statefulset-leader-election-operator/internal/metrics" // Initialize metrics
 	// +kubebuilder:scaffold:imports
 )
 
@@ -75,7 +76,12 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	// Set up structured logging with additional fields
+	logger := zap.New(zap.UseFlagOptions(&opts))
+	ctrl.SetLogger(logger.WithValues(
+		"component", "statefulset-leader-election-operator",
+		"version", "v1.0.0",
+	))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
