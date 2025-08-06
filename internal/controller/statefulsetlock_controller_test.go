@@ -40,12 +40,12 @@ import (
 var _ = Describe("StatefulSetLock Controller", func() {
 	Context("Happy Path Integration Tests", func() {
 		var (
-			ctx                context.Context
+			ctx                  context.Context
 			controllerReconciler *StatefulSetLockReconciler
-			testNamespace      string
-			statefulSetName    string
-			leaseName          string
-			statefulSetLockName string
+			testNamespace        string
+			statefulSetName      string
+			leaseName            string
+			statefulSetLockName  string
 		)
 
 		BeforeEach(func() {
@@ -100,11 +100,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 3, 3, statefulSet) // 3 pods, all ready
 			for i, pod := range pods {
 				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-				
+
 				// Update the status separately (required for envtest)
 				createdPod := &corev1.Pod{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-				
+
 				// Set the status on the fetched pod
 				isReady := i < 3 // All 3 pods should be ready
 				createdPod.Status.Phase = func() corev1.PodPhase {
@@ -124,11 +124,9 @@ var _ = Describe("StatefulSetLock Controller", func() {
 						}(),
 					},
 				}
-				
+
 				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 			}
-
-
 
 			By("Creating a StatefulSetLock")
 			statefulSetLock := &appv1.StatefulSetLock{
@@ -150,7 +148,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			// If requeue is requested, run reconciliation again
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -217,11 +215,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				podName := fmt.Sprintf("%s-%d", statefulSetName, i)
 				pod := createPodWithReadiness(podName, testNamespace, podReadiness[i], statefulSet)
 				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-				
+
 				// Update the status separately (required for envtest)
 				createdPod := &corev1.Pod{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: podName, Namespace: testNamespace}, createdPod)).To(Succeed())
-				
+
 				createdPod.Status.Phase = func() corev1.PodPhase {
 					if podReadiness[i] {
 						return corev1.PodRunning
@@ -239,7 +237,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 						}(),
 					},
 				}
-				
+
 				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 			}
 
@@ -263,7 +261,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			// If requeue is requested, run reconciliation again
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -319,11 +317,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 2, 2, statefulSet)
 			for i, pod := range pods {
 				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-				
+
 				// Update the status separately (required for envtest)
 				createdPod := &corev1.Pod{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-				
+
 				// Set the status on the fetched pod
 				podReady := i < 2 // Both pods should be ready
 				createdPod.Status.Phase = func() corev1.PodPhase {
@@ -343,7 +341,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 						}(),
 					},
 				}
-				
+
 				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 			}
 
@@ -367,7 +365,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			// If requeue is requested, run reconciliation again
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -401,13 +399,13 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				if err := k8sClient.Get(ctx, types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace}, updatedSSL); err != nil {
 					return false
 				}
-				
+
 				// Check for Available condition
 				availableCondition := findCondition(updatedSSL.Status.Conditions, "Available")
 				if availableCondition == nil || availableCondition.Status != metav1.ConditionTrue {
 					return false
 				}
-				
+
 				return true
 			}, "10s", "1s").Should(BeTrue())
 		})
@@ -415,12 +413,12 @@ var _ = Describe("StatefulSetLock Controller", func() {
 
 	Context("Failover Scenario Integration Tests", func() {
 		var (
-			ctx                context.Context
+			ctx                  context.Context
 			controllerReconciler *StatefulSetLockReconciler
-			testNamespace      string
-			statefulSetName    string
-			leaseName          string
-			statefulSetLockName string
+			testNamespace        string
+			statefulSetName      string
+			leaseName            string
+			statefulSetLockName  string
 		)
 
 		BeforeEach(func() {
@@ -475,11 +473,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 3, 3, statefulSet)
 			for _, pod := range pods {
 				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-				
+
 				// Update the status separately (required for envtest)
 				createdPod := &corev1.Pod{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-				
+
 				// All pods start as ready
 				createdPod.Status.Phase = corev1.PodRunning
 				createdPod.Status.Conditions = []corev1.PodCondition{
@@ -488,7 +486,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 						Status: corev1.ConditionTrue,
 					},
 				}
-				
+
 				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 			}
 
@@ -511,7 +509,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
@@ -544,7 +542,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			By("Simulating leader pod becoming NotReady")
 			leaderPod := &corev1.Pod{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: initialLeaderName, Namespace: testNamespace}, leaderPod)).To(Succeed())
-			
+
 			// Update pod status to NotReady
 			leaderPod.Status.Phase = corev1.PodPending
 			leaderPod.Status.Conditions = []corev1.PodCondition{
@@ -559,7 +557,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			By("Waiting for lease to expire and triggering reconciliation")
 			// Wait for lease to expire (5 seconds + buffer)
 			time.Sleep(6 * time.Second)
-			
+
 			// Trigger reconciliation
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
@@ -625,11 +623,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 4, 4, statefulSet)
 			for _, pod := range pods {
 				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-				
+
 				// Update the status separately (required for envtest)
 				createdPod := &corev1.Pod{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-				
+
 				// All pods start as ready
 				createdPod.Status.Phase = corev1.PodRunning
 				createdPod.Status.Conditions = []corev1.PodCondition{
@@ -638,7 +636,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 						Status: corev1.ConditionTrue,
 					},
 				}
-				
+
 				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 			}
 
@@ -661,7 +659,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
@@ -787,11 +785,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 3, 2, statefulSet)
 			for i, pod := range pods {
 				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-				
+
 				// Update the status separately (required for envtest)
 				createdPod := &corev1.Pod{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-				
+
 				// Pod-0 is not ready, pod-1 and pod-2 are ready
 				isReady := i >= 1
 				createdPod.Status.Phase = func() corev1.PodPhase {
@@ -811,7 +809,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 						}(),
 					},
 				}
-				
+
 				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 			}
 
@@ -834,7 +832,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
@@ -938,14 +936,477 @@ var _ = Describe("StatefulSetLock Controller", func() {
 		})
 	})
 
+	Context("Lease Renewal Integration Tests", func() {
+		var (
+			ctx                  context.Context
+			controllerReconciler *StatefulSetLockReconciler
+			testNamespace        string
+			statefulSetName      string
+			leaseName            string
+			statefulSetLockName  string
+		)
+
+		BeforeEach(func() {
+			ctx = context.Background()
+			controllerReconciler = &StatefulSetLockReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			testNamespace = "default"
+			// Make resource names unique per test to avoid conflicts
+			testSuffix := fmt.Sprintf("%d-%d", GinkgoRandomSeed(), time.Now().UnixNano())
+			statefulSetName = fmt.Sprintf("test-sts-%s", testSuffix)
+			leaseName = fmt.Sprintf("test-lease-%s", testSuffix)
+			statefulSetLockName = fmt.Sprintf("test-ssl-%s", testSuffix)
+		})
+
+		AfterEach(func() {
+			// Clean up all resources created during the test
+			By("Cleaning up StatefulSetLock")
+			ssl := &appv1.StatefulSetLock{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace}, ssl); err == nil {
+				Expect(k8sClient.Delete(ctx, ssl)).To(Succeed())
+			}
+
+			By("Cleaning up StatefulSet")
+			sts := &appsv1.StatefulSet{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: statefulSetName, Namespace: testNamespace}, sts); err == nil {
+				Expect(k8sClient.Delete(ctx, sts)).To(Succeed())
+			}
+
+			By("Cleaning up Pods")
+			podList := &corev1.PodList{}
+			if err := k8sClient.List(ctx, podList, client.InNamespace(testNamespace), client.MatchingLabels{"app": "test"}); err == nil {
+				for _, pod := range podList.Items {
+					Expect(k8sClient.Delete(ctx, &pod)).To(Succeed())
+				}
+			}
+
+			By("Cleaning up Lease")
+			lease := &coordinationv1.Lease{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: leaseName, Namespace: testNamespace}, lease); err == nil {
+				Expect(k8sClient.Delete(ctx, lease)).To(Succeed())
+			}
+		})
+
+		It("should renew lease before expiration", func() {
+			By("Creating a StatefulSet with 2 replicas")
+			statefulSet := createTestStatefulSet(statefulSetName, testNamespace, 2)
+			Expect(k8sClient.Create(ctx, statefulSet)).To(Succeed())
+
+			By("Creating ready pods")
+			pods := createTestPods(statefulSetName, testNamespace, 2, 2, statefulSet)
+			for _, pod := range pods {
+				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
+
+				// Update the status separately (required for envtest)
+				createdPod := &corev1.Pod{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
+
+				createdPod.Status.Phase = corev1.PodRunning
+				createdPod.Status.Conditions = []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				}
+
+				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
+			}
+
+			By("Creating a StatefulSetLock with 10 second lease duration")
+			statefulSetLock := &appv1.StatefulSetLock{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      statefulSetLockName,
+					Namespace: testNamespace,
+				},
+				Spec: appv1.StatefulSetLockSpec{
+					StatefulSetName:      statefulSetName,
+					LeaseName:            leaseName,
+					LeaseDurationSeconds: 10, // 10 seconds for testing
+				},
+			}
+			Expect(k8sClient.Create(ctx, statefulSetLock)).To(Succeed())
+
+			By("Performing initial reconciliation to establish leader")
+			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			if result.Requeue || result.RequeueAfter > 0 {
+				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+				})
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			By("Verifying initial lease is created")
+			lease := &coordinationv1.Lease{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: leaseName, Namespace: testNamespace}, lease)
+			}, "10s", "1s").Should(Succeed())
+
+			By("Recording initial lease renewal time")
+			Expect(lease.Spec.RenewTime).NotTo(BeNil())
+			initialRenewTime := *lease.Spec.RenewTime
+
+			By("Waiting for half the lease duration (5 seconds) and triggering reconciliation")
+			time.Sleep(5 * time.Second)
+
+			result, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying lease was renewed before expiration")
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: leaseName, Namespace: testNamespace}, lease); err != nil {
+					return false
+				}
+				if lease.Spec.RenewTime == nil {
+					return false
+				}
+				// Check that the lease was renewed (renewTime should be updated)
+				return lease.Spec.RenewTime.After(initialRenewTime.Time)
+			}, "10s", "1s").Should(BeTrue())
+
+			By("Verifying lease is not expired")
+			Expect(lease.Spec.RenewTime).NotTo(BeNil())
+			renewTime := lease.Spec.RenewTime.Time
+			leaseDuration := time.Duration(statefulSetLock.Spec.LeaseDurationSeconds) * time.Second
+			expirationTime := renewTime.Add(leaseDuration)
+			Expect(time.Now().Before(expirationTime)).To(BeTrue(), "Lease should not be expired after renewal")
+
+			By("Verifying leader remains the same (no unnecessary election)")
+			expectedLeader := fmt.Sprintf("%s-0", statefulSetName)
+			Expect(lease.Spec.HolderIdentity).NotTo(BeNil())
+			Expect(*lease.Spec.HolderIdentity).To(Equal(expectedLeader))
+		})
+
+		It("should schedule reconciliation at half lease duration intervals", func() {
+			By("Creating a StatefulSet with 1 replica")
+			statefulSet := createTestStatefulSet(statefulSetName, testNamespace, 1)
+			Expect(k8sClient.Create(ctx, statefulSet)).To(Succeed())
+
+			By("Creating ready pod")
+			pods := createTestPods(statefulSetName, testNamespace, 1, 1, statefulSet)
+			pod := pods[0]
+			Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
+
+			// Update the status separately (required for envtest)
+			createdPod := &corev1.Pod{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
+
+			createdPod.Status.Phase = corev1.PodRunning
+			createdPod.Status.Conditions = []corev1.PodCondition{
+				{
+					Type:   corev1.PodReady,
+					Status: corev1.ConditionTrue,
+				},
+			}
+
+			Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
+
+			By("Creating a StatefulSetLock with 8 second lease duration")
+			statefulSetLock := &appv1.StatefulSetLock{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      statefulSetLockName,
+					Namespace: testNamespace,
+				},
+				Spec: appv1.StatefulSetLockSpec{
+					StatefulSetName:      statefulSetName,
+					LeaseName:            leaseName,
+					LeaseDurationSeconds: 8, // 8 seconds, so requeue should be at 4 seconds
+				},
+			}
+			Expect(k8sClient.Create(ctx, statefulSetLock)).To(Succeed())
+
+			By("Performing reconciliation and verifying requeue timing")
+			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Handle initial finalizer addition
+			if result.Requeue || result.RequeueAfter > 0 {
+				result, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+				})
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			By("Verifying reconciliation is scheduled at half lease duration (4 seconds)")
+			expectedRequeueAfter := time.Duration(4) * time.Second // Half of 8 seconds
+			Expect(result.RequeueAfter).To(Equal(expectedRequeueAfter))
+
+			By("Testing with different lease duration")
+			// Update the StatefulSetLock with a different lease duration
+			updatedSSL := &appv1.StatefulSetLock{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace}, updatedSSL)).To(Succeed())
+			updatedSSL.Spec.LeaseDurationSeconds = 20 // 20 seconds, so requeue should be at 10 seconds
+			Expect(k8sClient.Update(ctx, updatedSSL)).To(Succeed())
+
+			By("Performing reconciliation with updated lease duration")
+			result, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying reconciliation is scheduled at half of new lease duration (10 seconds)")
+			expectedRequeueAfter = time.Duration(10) * time.Second // Half of 20 seconds
+			Expect(result.RequeueAfter).To(Equal(expectedRequeueAfter))
+		})
+
+		It("should ensure no unnecessary leader changes during normal operation", func() {
+			By("Creating a StatefulSet with 3 replicas")
+			statefulSet := createTestStatefulSet(statefulSetName, testNamespace, 3)
+			Expect(k8sClient.Create(ctx, statefulSet)).To(Succeed())
+
+			By("Creating ready pods")
+			pods := createTestPods(statefulSetName, testNamespace, 3, 3, statefulSet)
+			for _, pod := range pods {
+				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
+
+				// Update the status separately (required for envtest)
+				createdPod := &corev1.Pod{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
+
+				createdPod.Status.Phase = corev1.PodRunning
+				createdPod.Status.Conditions = []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				}
+
+				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
+			}
+
+			By("Creating a StatefulSetLock with 6 second lease duration")
+			statefulSetLock := &appv1.StatefulSetLock{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      statefulSetLockName,
+					Namespace: testNamespace,
+				},
+				Spec: appv1.StatefulSetLockSpec{
+					StatefulSetName:      statefulSetName,
+					LeaseName:            leaseName,
+					LeaseDurationSeconds: 6, // 6 seconds for testing
+				},
+			}
+			Expect(k8sClient.Create(ctx, statefulSetLock)).To(Succeed())
+
+			By("Establishing initial leader")
+			result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			if result.Requeue || result.RequeueAfter > 0 {
+				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+				})
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			By("Recording initial leader")
+			lease := &coordinationv1.Lease{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: leaseName, Namespace: testNamespace}, lease)
+			}, "10s", "1s").Should(Succeed())
+
+			Expect(lease.Spec.HolderIdentity).NotTo(BeNil())
+			initialLeader := *lease.Spec.HolderIdentity
+			expectedLeader := fmt.Sprintf("%s-0", statefulSetName) // Should be lowest ordinal
+			Expect(initialLeader).To(Equal(expectedLeader))
+
+			By("Performing multiple reconciliation cycles to simulate normal operation")
+			for i := 0; i < 3; i++ {
+				// Wait for half lease duration (3 seconds)
+				time.Sleep(3 * time.Second)
+
+				// Trigger reconciliation
+				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify leader hasn't changed
+				Eventually(func() string {
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: leaseName, Namespace: testNamespace}, lease); err != nil {
+						return ""
+					}
+					if lease.Spec.HolderIdentity == nil {
+						return ""
+					}
+					return *lease.Spec.HolderIdentity
+				}, "5s", "1s").Should(Equal(initialLeader), fmt.Sprintf("Leader should remain the same in cycle %d", i+1))
+			}
+
+			By("Verifying final leader is still the same")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: leaseName, Namespace: testNamespace}, lease)).To(Succeed())
+			Expect(lease.Spec.HolderIdentity).NotTo(BeNil())
+			Expect(*lease.Spec.HolderIdentity).To(Equal(initialLeader))
+
+			By("Verifying pod labels remain consistent")
+			Eventually(func() bool {
+				// Check leader pod has writer label
+				leaderPod := &corev1.Pod{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: initialLeader, Namespace: testNamespace}, leaderPod); err != nil {
+					return false
+				}
+				if leaderPod.Labels["sts-role"] != "writer" {
+					return false
+				}
+
+				// Check non-leader pods have reader labels
+				for i := 1; i < 3; i++ {
+					podName := fmt.Sprintf("%s-%d", statefulSetName, i)
+					pod := &corev1.Pod{}
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: podName, Namespace: testNamespace}, pod); err != nil {
+						return false
+					}
+					if pod.Labels["sts-role"] != "reader" {
+						return false
+					}
+				}
+				return true
+			}, "10s", "1s").Should(BeTrue())
+		})
+
+		It("should handle various lease duration configurations correctly", func() {
+			By("Creating a StatefulSet with 2 replicas")
+			statefulSet := createTestStatefulSet(statefulSetName, testNamespace, 2)
+			Expect(k8sClient.Create(ctx, statefulSet)).To(Succeed())
+
+			By("Creating ready pods")
+			pods := createTestPods(statefulSetName, testNamespace, 2, 2, statefulSet)
+			for _, pod := range pods {
+				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
+
+				// Update the status separately (required for envtest)
+				createdPod := &corev1.Pod{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
+
+				createdPod.Status.Phase = corev1.PodRunning
+				createdPod.Status.Conditions = []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				}
+
+				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
+			}
+
+			testCases := []struct {
+				leaseDuration        int32
+				expectedRequeueAfter time.Duration
+				description          string
+			}{
+				{
+					leaseDuration:        4,
+					expectedRequeueAfter: 2 * time.Second,
+					description:          "4 second lease duration",
+				},
+				{
+					leaseDuration:        30,
+					expectedRequeueAfter: 15 * time.Second,
+					description:          "30 second lease duration",
+				},
+				{
+					leaseDuration:        60,
+					expectedRequeueAfter: 30 * time.Second,
+					description:          "60 second lease duration",
+				},
+			}
+
+			for i, tc := range testCases {
+				By(fmt.Sprintf("Testing %s (test case %d)", tc.description, i+1))
+
+				// Create or update StatefulSetLock with specific lease duration
+				if i == 0 {
+					// Create for first test case
+					statefulSetLock := &appv1.StatefulSetLock{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      statefulSetLockName,
+							Namespace: testNamespace,
+						},
+						Spec: appv1.StatefulSetLockSpec{
+							StatefulSetName:      statefulSetName,
+							LeaseName:            leaseName,
+							LeaseDurationSeconds: tc.leaseDuration,
+						},
+					}
+					Expect(k8sClient.Create(ctx, statefulSetLock)).To(Succeed())
+				} else {
+					// Update for subsequent test cases
+					statefulSetLock := &appv1.StatefulSetLock{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace}, statefulSetLock)).To(Succeed())
+					statefulSetLock.Spec.LeaseDurationSeconds = tc.leaseDuration
+					Expect(k8sClient.Update(ctx, statefulSetLock)).To(Succeed())
+				}
+
+				By(fmt.Sprintf("Performing reconciliation with %d second lease duration", tc.leaseDuration))
+				result, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				// Handle initial finalizer addition for first test case
+				if i == 0 && (result.Requeue || result.RequeueAfter > 0) {
+					result, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+					})
+					Expect(err).NotTo(HaveOccurred())
+				}
+
+				By(fmt.Sprintf("Verifying requeue timing is half of lease duration (%v)", tc.expectedRequeueAfter))
+				Expect(result.RequeueAfter).To(Equal(tc.expectedRequeueAfter))
+
+				By("Verifying lease is created/updated with correct duration")
+				lease := &coordinationv1.Lease{}
+				Eventually(func() bool {
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: leaseName, Namespace: testNamespace}, lease); err != nil {
+						return false
+					}
+					return lease.Spec.LeaseDurationSeconds != nil && *lease.Spec.LeaseDurationSeconds == tc.leaseDuration
+				}, "10s", "1s").Should(BeTrue())
+
+				By("Verifying lease renewal works with this duration")
+				Expect(lease.Spec.RenewTime).NotTo(BeNil())
+				initialRenewTime := *lease.Spec.RenewTime
+
+				// Wait a short time and trigger another reconciliation
+				time.Sleep(1 * time.Second)
+				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify lease was renewed
+				Eventually(func() bool {
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: leaseName, Namespace: testNamespace}, lease); err != nil {
+						return false
+					}
+					if lease.Spec.RenewTime == nil {
+						return false
+					}
+					return lease.Spec.RenewTime.After(initialRenewTime.Time)
+				}, "10s", "1s").Should(BeTrue())
+			}
+		})
+	})
+
 	Context("Resource Cleanup Integration Tests", func() {
 		var (
-			ctx                context.Context
+			ctx                  context.Context
 			controllerReconciler *StatefulSetLockReconciler
-			testNamespace      string
-			statefulSetName    string
-			leaseName          string
-			statefulSetLockName string
+			testNamespace        string
+			statefulSetName      string
+			leaseName            string
+			statefulSetLockName  string
 		)
 
 		BeforeEach(func() {
@@ -1000,11 +1461,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 2, 2, statefulSet)
 			for _, pod := range pods {
 				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-				
+
 				// Update the status separately (required for envtest)
 				createdPod := &corev1.Pod{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-				
+
 				createdPod.Status.Phase = corev1.PodRunning
 				createdPod.Status.Conditions = []corev1.PodCondition{
 					{
@@ -1012,7 +1473,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 						Status: corev1.ConditionTrue,
 					},
 				}
-				
+
 				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 			}
 
@@ -1035,7 +1496,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
@@ -1126,11 +1587,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 1, 1, statefulSet)
 			pod := pods[0]
 			Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-			
+
 			// Update the status separately (required for envtest)
 			createdPod := &corev1.Pod{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-			
+
 			createdPod.Status.Phase = corev1.PodRunning
 			createdPod.Status.Conditions = []corev1.PodCondition{
 				{
@@ -1138,7 +1599,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 					Status: corev1.ConditionTrue,
 				},
 			}
-			
+
 			Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 
 			By("Creating a StatefulSetLock")
@@ -1160,7 +1621,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
@@ -1207,11 +1668,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 1, 1, statefulSet)
 			pod := pods[0]
 			Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-			
+
 			// Update the status separately (required for envtest)
 			createdPod := &corev1.Pod{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-			
+
 			createdPod.Status.Phase = corev1.PodRunning
 			createdPod.Status.Conditions = []corev1.PodCondition{
 				{
@@ -1219,7 +1680,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 					Status: corev1.ConditionTrue,
 				},
 			}
-			
+
 			Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 
 			By("Creating a StatefulSetLock")
@@ -1241,7 +1702,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
@@ -1293,11 +1754,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 2, 2, statefulSet)
 			for _, pod := range pods {
 				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-				
+
 				// Update the status separately (required for envtest)
 				createdPod := &corev1.Pod{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-				
+
 				createdPod.Status.Phase = corev1.PodRunning
 				createdPod.Status.Conditions = []corev1.PodCondition{
 					{
@@ -1305,7 +1766,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 						Status: corev1.ConditionTrue,
 					},
 				}
-				
+
 				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 			}
 
@@ -1328,7 +1789,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
@@ -1386,11 +1847,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 1, 1, statefulSet)
 			pod := pods[0]
 			Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-			
+
 			// Update the status separately (required for envtest)
 			createdPod := &corev1.Pod{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-			
+
 			createdPod.Status.Phase = corev1.PodRunning
 			createdPod.Status.Conditions = []corev1.PodCondition{
 				{
@@ -1398,7 +1859,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 					Status: corev1.ConditionTrue,
 				},
 			}
-			
+
 			Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 
 			By("Creating a StatefulSetLock")
@@ -1420,7 +1881,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
@@ -1470,11 +1931,11 @@ var _ = Describe("StatefulSetLock Controller", func() {
 			pods := createTestPods(statefulSetName, testNamespace, 2, 2, statefulSet)
 			for _, pod := range pods {
 				Expect(k8sClient.Create(ctx, &pod)).To(Succeed())
-				
+
 				// Update the status separately (required for envtest)
 				createdPod := &corev1.Pod{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: testNamespace}, createdPod)).To(Succeed())
-				
+
 				createdPod.Status.Phase = corev1.PodRunning
 				createdPod.Status.Conditions = []corev1.PodCondition{
 					{
@@ -1482,7 +1943,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 						Status: corev1.ConditionTrue,
 					},
 				}
-				
+
 				Expect(k8sClient.Status().Update(ctx, createdPod)).To(Succeed())
 			}
 
@@ -1505,7 +1966,7 @@ var _ = Describe("StatefulSetLock Controller", func() {
 				NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			if result.Requeue || result.RequeueAfter > 0 {
 				_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Name: statefulSetLockName, Namespace: testNamespace},
@@ -1598,11 +2059,11 @@ func createTestStatefulSet(name, namespace string, replicas int32) *appsv1.State
 // createTestPods creates test pods for a StatefulSet with specified readiness
 func createTestPods(stsName, namespace string, count, readyCount int, statefulSet *appsv1.StatefulSet) []corev1.Pod {
 	pods := make([]corev1.Pod, count)
-	
+
 	for i := 0; i < count; i++ {
 		podName := fmt.Sprintf("%s-%d", stsName, i)
 		isReady := i < readyCount
-		
+
 		pods[i] = corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      podName,
@@ -1634,7 +2095,7 @@ func createTestPods(stsName, namespace string, count, readyCount int, statefulSe
 				}(),
 				Conditions: []corev1.PodCondition{
 					{
-						Type:   corev1.PodReady,
+						Type: corev1.PodReady,
 						Status: func() corev1.ConditionStatus {
 							if isReady {
 								return corev1.ConditionTrue
@@ -1646,7 +2107,7 @@ func createTestPods(stsName, namespace string, count, readyCount int, statefulSe
 			},
 		}
 	}
-	
+
 	return pods
 }
 
@@ -1695,6 +2156,3 @@ func createPodWithReadiness(name, namespace string, ready bool, statefulSet *app
 		},
 	}
 }
-
-
-
