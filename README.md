@@ -258,6 +258,43 @@ kubectl get ssl -w
 kubectl logs -n <operator-namespace> deployment/sts-leader-elect-operator-controller-manager
 ```
 
+## Releases and Versioning
+
+This project follows [Semantic Versioning](https://semver.org/). Release information is tracked in [CHANGELOG.md](CHANGELOG.md).
+
+### Installing a Specific Version
+
+You can install a specific version of the operator using the release manifests:
+
+```sh
+# Install the latest stable version
+kubectl apply -f https://github.com/anukkrit/statefulset-leader-election-operator/releases/latest/download/install-production.yaml
+
+# Install a specific version (replace v0.1.0 with desired version)
+kubectl apply -f https://github.com/anukkrit/statefulset-leader-election-operator/releases/download/v0.1.0/install-production.yaml
+```
+
+### Creating a Release
+
+For maintainers, to create a new release:
+
+```sh
+# Prepare release (this will update VERSION file, build manifests, and create container image)
+make release VERSION=x.y.z
+
+# Review changes
+git diff
+
+# Commit and tag
+git add -A
+git commit -m "Release vx.y.z"
+git tag vx.y.z
+git push origin main --tags
+
+# Push container image
+make docker-push IMG=anukkrit149/sts-leader-elect-operator:vx.y.z
+```
+
 ## Project Distribution
 
 Following are the steps to build the installer and distribute this project to users.

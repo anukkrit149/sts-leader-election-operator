@@ -325,7 +325,7 @@ The operator supports rolling updates:
 ```bash
 # Update image
 kubectl set image deployment/sts-leader-elect-operator-controller-manager \
-  manager=anukkrit.me/sts-leader-elect-operator:v0.1.0 \
+  manager=anukkrit149/sts-leader-elect-operator:v0.1.0 \
   -n sts-leader-elect-operator-system
 
 # Monitor rollout

@@ -3,7 +3,7 @@
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.0.1
+VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -28,8 +28,8 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 # This variable is used to construct full image tags for bundle and catalog images.
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
-# anukkrit.me/sts-leader-elect-operator-bundle:$VERSION and anukkrit.me/sts-leader-elect-operator-catalog:$VERSION.
-IMAGE_TAG_BASE ?= anukkrit.me/sts-leader-elect-operator
+# anukkrit149/sts-leader-elect-operator-bundle:$VERSION and anukkrit149/sts-leader-elect-operator-catalog:$VERSION.
+IMAGE_TAG_BASE ?= anukkrit149/sts-leader-elect-operator
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
@@ -50,7 +50,7 @@ endif
 # This is useful for CI or a project to utilize a specific version of the operator-sdk toolkit.
 OPERATOR_SDK_VERSION ?= v1.39.2
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= $(IMAGE_TAG_BASE):v$(VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.0
 
@@ -127,6 +127,20 @@ lint: golangci-lint ## Run golangci-lint linter
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 	$(GOLANGCI_LINT) run --fix
 
+##@ Release
+
+.PHONY: release
+release: ## Prepare a new release (usage: make release VERSION=x.y.z)
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION is required. Usage: make release VERSION=x.y.z"; \
+		exit 1; \
+	fi
+	./scripts/release.sh $(VERSION)
+
+.PHONY: version
+version: ## Show current version
+	@echo $(VERSION)
+
 ##@ Build
 
 .PHONY: build
@@ -147,6 +161,13 @@ docker-build: ## Build docker image with the manager.
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
+
+.PHONY: docker-build-and-push
+docker-build-and-push: docker-build docker-push ## Build and push docker image with the manager.
+
+.PHONY: docker-build-versioned
+docker-build-versioned: ## Build docker image with version tag.
+	$(CONTAINER_TOOL) build -t $(IMAGE_TAG_BASE):v$(VERSION) -t $(IMAGE_TAG_BASE):latest .
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:

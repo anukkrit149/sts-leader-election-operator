@@ -16,8 +16,8 @@ patches:
 # Set image for installation
 images:
 - name: controller
-  newName: controller
-  newTag: latest
+  newName: anukkrit.me/sts-leader-elect-operator
+  newTag: v0.1.0
 
 # Add common labels for all resources
 labels:

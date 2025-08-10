@@ -85,7 +85,7 @@ var _ = BeforeSuite(func() {
 	// Add additional schemes needed for integration tests
 	err = appsv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	err = coordinationv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 

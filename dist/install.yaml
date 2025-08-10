@@ -475,7 +475,7 @@ spec:
               fieldPath: metadata.name
         - name: OPERATOR_NAME
           value: sts-leader-elect-operator
-        image: controller:latest
+        image: anukkrit149/sts-leader-elect-operator:v0.1.0
         livenessProbe:
           failureThreshold: 3
           httpGet:

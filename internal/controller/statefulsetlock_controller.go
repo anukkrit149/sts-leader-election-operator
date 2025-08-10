@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/codes"
 	appsv1 "k8s.io/api/apps/v1"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -37,7 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"go.opentelemetry.io/otel/codes"
 
 	appv1 "github.com/anukkrit/statefulset-leader-election-operator/api/v1"
 	"github.com/anukkrit/statefulset-leader-election-operator/internal/logging"
@@ -528,7 +528,7 @@ func (r *StatefulSetLockReconciler) setCondition(statefulSetLock *appv1.Stateful
 // handleReconcileError handles errors during reconciliation and updates conditions
 func (r *StatefulSetLockReconciler) handleReconcileError(ctx context.Context, statefulSetLock *appv1.StatefulSetLock, err error, message string) (ctrl.Result, error) {
 	logger := logging.LoggerFromContext(ctx)
-	
+
 	logging.Error(
 		logging.WithStatefulSetLock(logger, statefulSetLock.Namespace, statefulSetLock.Name),
 		err,
