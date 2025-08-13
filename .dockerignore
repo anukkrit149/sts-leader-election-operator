@@ -1,3 +1,15 @@
 # More info: https://docs.docker.com/engine/reference/builder/#dockerignore-file
 # Ignore build and test binaries.
 bin/
+# Go
+dist/
+vendor/
+*.out
+.coverprofile
+# VCS
+.git
+.gitignore
+# IDE/OS
+.idea/
+.vscode/
+.DS_Store

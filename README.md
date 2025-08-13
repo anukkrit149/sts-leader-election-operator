@@ -229,6 +229,23 @@ The operator uses the following algorithm for leader election:
 
 ### Monitoring and Observability
 
+Metrics endpoint:
+- Path is /metrics.
+- Local (make run): http://localhost:8080/metrics
+- In cluster (default): HTTPS on 8443 with authn/authz. Access via:
+  - kubectl -n <ns> port-forward svc/controller-manager-metrics-service 8443:8443
+  - curl -k https://localhost:8443/metrics
+
+Common flags:
+- --metrics-bind-address=:PORT (use 0 to disable)
+- --metrics-secure=false for local HTTP
+- --health-probe-bind-address=:8081
+
+Health probes:
+- /healthz and /readyz on the probe address.
+
+Note: Visiting http://localhost:8443/ will not show metrics; use /metrics and https:// for secure.
+
 #### Checking Leader Status
 
 ```sh

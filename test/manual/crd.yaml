@@ -1,0 +1,15 @@
+apiVersion: app.anukkrit.me/v1
+kind: StatefulSetLock
+metadata:
+  labels:
+    app.kubernetes.io/name: sts-leader-elect-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: postgres-cluster-lock
+  namespace: test-ha
+spec:
+  # Name of the StatefulSet to manage leader election for
+  statefulSetName: "postgres-cluster"
+  # Name of the lease object that will be created for coordination
+  leaseName: "postgres-cluster-leader-lease"
+  # Duration in seconds for how long the lease is valid (30 seconds)
+  leaseDurationSeconds: 3600

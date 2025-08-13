@@ -143,16 +143,31 @@ Configure logging levels using command-line flags:
 ```
 
 ### Metrics Configuration
-Metrics are automatically exposed on the metrics endpoint (default: `:8080/metrics`).
+Access metrics at the /metrics path.
 
-Configure metrics endpoint:
+Local development (make run):
+- The Makefile run target starts the manager with --metrics-bind-address=:8080 and --metrics-secure=false.
+- Access: curl http://localhost:8080/metrics
+
+Cluster defaults:
+- Manifests configure secure metrics on :8443 with authn/authz.
+- Access path is /metrics over HTTPS. Example from within the cluster or via port-forward:
+  - kubectl -n <ns> port-forward svc/controller-manager-metrics-service 8443:8443
+  - curl -k https://localhost:8443/metrics
+
+Flags:
 ```bash
-# Change metrics bind address
---metrics-bind-address=:9090
-
-# Disable metrics
+# Bind address (use :PORT to enable; 0 disables)
+--metrics-bind-address=:8080
 --metrics-bind-address=0
+
+# Serve metrics over HTTPS (default: true). For local testing, set to false.
+--metrics-secure=false
+
+# Health/ready probes:
+--health-probe-bind-address=:8081
 ```
+Note: http://localhost:8443/ (root) will not return metrics. Use the correct path: /metrics, and https:// for secure mode.
 
 ### Tracing Configuration
 OpenTelemetry tracing is automatically enabled. Configure tracing using standard OpenTelemetry environment variables:
@@ -247,5 +262,10 @@ kubectl logs -l app.kubernetes.io/name=statefulset-leader-election-operator -f
 
 **Check metrics:**
 ```bash
-curl http://operator-service:8080/metrics | grep statefulsetlock
+# Local (make run)
+curl http://localhost:8080/metrics | grep statefulsetlock
+
+# In-cluster via port-forward (secure HTTPS with self-signed cert)
+kubectl -n <ns> port-forward svc/controller-manager-metrics-service 8443:8443
+curl -k https://localhost:8443/metrics | grep statefulsetlock
 ```

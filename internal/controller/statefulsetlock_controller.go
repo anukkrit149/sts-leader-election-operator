@@ -368,6 +368,7 @@ func (r *StatefulSetLockReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	r.setCondition(&statefulSetLock, ConditionTypeProgressing, metav1.ConditionTrue, ReasonReconciling, "Reconciling StatefulSetLock")
 
 	// Perform leader election reconciliation
+	// check do we need a leader election - pre condition for leader election - webhook mutation
 	result, err := r.performLeaderElection(ctx, &statefulSetLock)
 	if err != nil {
 		metrics.RecordReconciliationError(req.Namespace, req.Name, "leader_election_error")
@@ -821,6 +822,7 @@ func (r *StatefulSetLockReconciler) performLeaderElection(ctx context.Context, s
 
 	logger := logging.LoggerFromContext(ctx)
 	start := time.Now()
+	// todo: check need to leader election needed
 
 	logging.Info(logger, "Starting leader election process")
 

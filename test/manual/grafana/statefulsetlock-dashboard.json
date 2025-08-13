@@ -1,0 +1,255 @@
+{
+  "title": "StatefulSet Leader Election Operator",
+  "tags": ["kubernetes", "operator", "statefulsetlock"],
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "type": "datasource",
+        "name": "DS_PROMETHEUS",
+        "label": "Prometheus",
+        "query": "prometheus",
+        "current": {},
+        "refresh": 1
+      },
+      {
+        "type": "query",
+        "name": "namespace",
+        "label": "Namespace",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(statefulsetlock_ready_pods, namespace)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*"
+      },
+      {
+        "type": "query",
+        "name": "statefulsetlock",
+        "label": "StatefulSetLock",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(statefulsetlock_ready_pods{namespace=~\"$namespace\"}, statefulsetlock)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*"
+      },
+      {
+        "type": "query",
+        "name": "statefulset",
+        "label": "StatefulSet",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(statefulsetlock_ready_pods{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\"}, statefulset)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*"
+      },
+      {
+        "type": "query",
+        "name": "lease_name",
+        "label": "Lease",
+        "datasource": "${DS_PROMETHEUS}",
+        "query": "label_values(statefulsetlock_lease_renewals_total{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\"}, lease_name)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Leader Elections Rate (by reason)",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(statefulsetlock_leader_elections_total{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", statefulset=~\"$statefulset\"}[5m]))",
+          "legendFormat": "{{reason}}"
+        },
+        {
+          "expr": "sum (rate(statefulsetlock_leader_elections_total{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", statefulset=~\"$statefulset\"}[5m]))",
+          "legendFormat": "total"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Leader Election Duration (p50/p95/p99)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(statefulsetlock_leader_election_duration_seconds_bucket{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", statefulset=~\"$statefulset\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(statefulsetlock_leader_election_duration_seconds_bucket{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", statefulset=~\"$statefulset\"}[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(statefulsetlock_leader_election_duration_seconds_bucket{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", statefulset=~\"$statefulset\"}[5m])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Lease Renewals Rate",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 7 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "sum by (lease_name) (rate(statefulsetlock_lease_renewals_total{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", lease_name=~\"$lease_name\"}[5m]))",
+          "legendFormat": "{{lease_name}}"
+        },
+        {
+          "expr": "sum (rate(statefulsetlock_lease_renewals_total{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", lease_name=~\"$lease_name\"}[5m]))",
+          "legendFormat": "total"
+        }
+      ],
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Lease Renewal Duration (p50/p95/p99)",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 7 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(statefulsetlock_lease_renewal_duration_seconds_bucket{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", lease_name=~\"$lease_name\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(statefulsetlock_lease_renewal_duration_seconds_bucket{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", lease_name=~\"$lease_name\"}[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(statefulsetlock_lease_renewal_duration_seconds_bucket{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", lease_name=~\"$lease_name\"}[5m])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Reconciliation Errors Rate (by type)",
+      "gridPos": { "x": 0, "y": 15, "w": 12, "h": 7 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "sum by (error_type) (rate(statefulsetlock_reconciliation_errors_total{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\"}[5m]))",
+          "legendFormat": "{{error_type}}"
+        },
+        {
+          "expr": "sum (rate(statefulsetlock_reconciliation_errors_total{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\"}[5m]))",
+          "legendFormat": "total"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Reconciliation Duration (p50/p95/p99)",
+      "gridPos": { "x": 12, "y": 15, "w": 12, "h": 7 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(statefulsetlock_reconciliation_duration_seconds_bucket{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(statefulsetlock_reconciliation_duration_seconds_bucket{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\"}[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(statefulsetlock_reconciliation_duration_seconds_bucket{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\"}[5m])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Current Leader (instant)",
+      "gridPos": { "x": 0, "y": 22, "w": 12, "h": 7 },
+      "datasource": "${DS_PROMETHEUS}",
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "expr": "statefulsetlock_current_leader_info{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", statefulset=~\"$statefulset\"}",
+          "legendFormat": "{{namespace}}/{{statefulsetlock}}/{{statefulset}} -> {{leader_pod}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "type": "gauge",
+      "title": "Ready Pods",
+      "gridPos": { "x": 12, "y": 22, "w": 6, "h": 7 },
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 10,
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 2 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "statefulsetlock_ready_pods{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", statefulset=~\"$statefulset\"}",
+          "legendFormat": "{{statefulset}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Lease Expiration Seconds (lower is worse)",
+      "gridPos": { "x": 18, "y": 22, "w": 6, "h": 7 },
+      "datasource": "${DS_PROMETHEUS}",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": -1 }, { "color": "yellow", "value": 30 }, { "color": "green", "value": 60 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "statefulsetlock_lease_expiration_seconds{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\", lease_name=~\"$lease_name\"}",
+          "legendFormat": "{{lease_name}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pod Labeling Errors Rate",
+      "gridPos": { "x": 0, "y": 29, "w": 12, "h": 7 },
+      "datasource": "${DS_PROMETHEUS}",
+      "targets": [
+        {
+          "expr": "sum by (pod_name) (rate(statefulsetlock_pod_labeling_errors_total{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\"}[5m]))",
+          "legendFormat": "{{pod_name}}"
+        },
+        {
+          "expr": "sum (rate(statefulsetlock_pod_labeling_errors_total{namespace=~\"$namespace\", statefulsetlock=~\"$statefulsetlock\"}[5m]))",
+          "legendFormat": "total"
+        }
+      ]
+    }
+  ]
+}
